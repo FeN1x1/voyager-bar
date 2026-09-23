@@ -66,7 +66,8 @@ enum ProviderMark {
             track.lineWidth = 2
             c.withAlphaComponent(0.28).setStroke()
             track.stroke()
-            let f = max(0, min(1, used / 100))
+            // The arc shows what the menu bar numbers show: left (default) or used.
+            let f = max(0, min(1, (Settings.showRemaining ? 100 - used : used) / 100))
             if f > 0.005 {
                 let arc = NSBezierPath()
                 arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * f, clockwise: true)
@@ -107,10 +108,9 @@ enum StatusTitle {
                 ring.bounds = CGRect(x: 0, y: -2.5, width: 14, height: 14)
                 title.append(NSAttributedString(attachment: ring))
                 gap(4)
-                let shown = Settings.showRemaining ? max(0, 100 - w.usedPercent) : w.usedPercent
-                title.append(NSAttributedString(string: String(format: "%.0f%%", shown),
+                title.append(NSAttributedString(string: String(format: "%.0f%%", UsageFormat.shown(w)),
                                                 attributes: [.font: font, .foregroundColor: w.usedPercent >= 90 ? NSColor.systemRed : NSColor.labelColor]))
-                tips.append("\(u.provider.title) · \(w.title): \(Int(w.usedPercent.rounded()))% used"
+                tips.append("\(u.provider.title) · \(w.title): \(Int(max(0, 100 - w.usedPercent).rounded()))% left (\(Int(w.usedPercent.rounded()))% used)"
                             + (UsageFormat.countdown(to: w.resetsAt).map { ", \($0)" } ?? ""))
             }
             if title.length == 0, store.claude.today.total + store.codex.today.total > 0 { fallthrough }

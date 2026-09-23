@@ -61,10 +61,10 @@ enum Settings {
         get { LimitChoice(rawValue: d.string(forKey: "codexMenuLimit") ?? "") ?? .weekly }
         set { d.set(newValue.rawValue, forKey: "codexMenuLimit") }
     }
-    /// Show percentages as "used" (default) or "left".
+    /// Show limits as what is left (default, like a battery) or as used.
     static var showRemaining: Bool {
-        get { d.bool(forKey: "showRemaining") }
-        set { d.set(newValue, forKey: "showRemaining") }
+        get { d.object(forKey: "limitsShowLeft") as? Bool ?? true }
+        set { d.set(newValue, forKey: "limitsShowLeft") }
     }
 
     /// Live wallpaper on/off and on which displays.

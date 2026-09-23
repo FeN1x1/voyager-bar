@@ -114,7 +114,8 @@ Aplikácia beží v menu bare (malá silueta Voyagera), nemá ikonu v Docku. Ľa
 
 - **Menu bar:** jeden krúžkový ukazovateľ na poskytovateľa v jeho farbe — Claude oranžová,
   OpenAI biela (na svetlej lište čierna). Pre Claude sa predvolene ukazuje **5-hodinový**
-  limit, pre Codex **týždenný**; dá sa prepnúť (5 h / týždeň / najtesnejší, použité / zostáva).
+  limit, pre Codex **týždenný**, a to ako **zostávajúce percentá** — krúžok sa vyprázdňuje ako
+  batéria; dá sa prepnúť (5 h / týždeň / najtesnejší, zostáva / použité).
 - **Claude limity bez hesla:** Claude Code ukladá prihlásenie do Keychainu cez nástroj
   `security`, ktorému táto položka dôveruje — Voyager Bar ho číta rovnako, takže macOS
   nepýta heslo. Token sa iba číta, nikdy neobnovuje ani nezapisuje.

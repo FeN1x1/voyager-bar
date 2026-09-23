@@ -27,6 +27,12 @@ enum UsageFormat {
         return "resets in \(max(1, s / 60))m"
     }
 
+    /// The number to show for a limit: what is left (default) or what is used.
+    static func shown(_ w: LimitWindow) -> Double {
+        Settings.showRemaining ? max(0, 100 - w.usedPercent) : min(100, w.usedPercent)
+    }
+    static var shownSuffix: String { Settings.showRemaining ? "left" : "used" }
+
     static func healthColor(used: Double) -> Color {
         let remaining = 100 - used
         if remaining < 20 { return VTheme.alert }

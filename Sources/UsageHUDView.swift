@@ -63,13 +63,13 @@ final class UsageHUDView: NSView {
             y += 21
             for w in u.limits.prefix(3) {
                 text(w.title, small, HUDView.dim).draw(at: NSPoint(x: 1, y: y))
-                let pct = text(String(format: "%.0f%%", w.usedPercent), small, HUDView.bright)
+                let pct = text(String(format: "%.0f%% %@", UsageFormat.shown(w), UsageFormat.shownSuffix), small, HUDView.bright)
                 pct.draw(at: NSPoint(x: 250 - pct.size().width, y: y))
                 y += 15
                 NSColor(white: 1, alpha: 0.14).setFill()
                 NSBezierPath(roundedRect: NSRect(x: 1, y: y, width: 249, height: 3), xRadius: 1.5, yRadius: 1.5).fill()
                 Self.health(w.usedPercent).setFill()
-                NSBezierPath(roundedRect: NSRect(x: 1, y: y, width: max(3, 249 * min(1, w.usedPercent / 100)), height: 3),
+                NSBezierPath(roundedRect: NSRect(x: 1, y: y, width: max(3, 249 * min(1, UsageFormat.shown(w) / 100)), height: 3),
                              xRadius: 1.5, yRadius: 1.5).fill()
                 y += 6
                 if let c = UsageFormat.countdown(to: w.resetsAt) {

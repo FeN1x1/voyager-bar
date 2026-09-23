@@ -163,7 +163,7 @@ let arguments = CommandLine.arguments
     let sem = DispatchSemaphore(value: 0)
     PetSprite.load { f in model.frames = f; sem.signal() }
     while sem.wait(timeout: .now() + 0.05) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
-    let view = PetView(model: model).padding(20).background(Color(white: 0.35))
+    let view = HStack(spacing: 4) { PetView(model: model); PetBubbleView(model: model) }.padding(20).background(Color(white: 0.35))
     let r = ImageRenderer(content: view)
     r.scale = 2
     guard let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return 2 }

@@ -96,7 +96,6 @@ final class PetModel: ObservableObject {
     @Published var codex = UsageStore.shared.codex
     @Published var size = Settings.petSize.points
     @Published var mode = Settings.petLimits
-    @Published var bubbleOnLeft = false
 
     var showsBubble: Bool {
         switch mode {
@@ -114,17 +113,15 @@ final class PetModel: ObservableObject {
 
 struct PetView: View {
     @ObservedObject var model: PetModel
-
     var body: some View {
-        HStack(alignment: .center, spacing: 6) {
-            if model.bubbleOnLeft, model.showsBubble { PetBubble(model: model).transition(.opacity) }
-            PetSpriteView(model: model)
-                .frame(width: model.size, height: model.size)
-            if !model.bubbleOnLeft, model.showsBubble { PetBubble(model: model).transition(.opacity) }
-        }
-        .animation(.easeOut(duration: 0.18), value: model.showsBubble)
-        .fixedSize()
+        PetSpriteView(model: model).frame(width: model.size, height: model.size)
     }
+}
+
+/// The limits bubble in its own window, so showing it never moves the pet.
+struct PetBubbleView: View {
+    @ObservedObject var model: PetModel
+    var body: some View { PetBubble(model: model).fixedSize() }
 }
 
 private struct PetSpriteView: View {
@@ -201,9 +198,13 @@ private struct PetBubble: View {
                             Text(UsageFormat.countdown(to: w.resetsAt) ?? w.source).font(VTheme.mono(8.5)).foregroundStyle(VTheme.faint)
                         }
                         Spacer(minLength: 6)
-                        Text(String(format: "%.0f%%", Settings.showRemaining ? max(0, 100 - w.usedPercent) : w.usedPercent))
-                            .font(VTheme.mono(14, .light))
-                            .foregroundStyle(w.usedPercent >= 90 ? VTheme.alert : VTheme.text)
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text(String(format: "%.0f%%", UsageFormat.shown(w)))
+                                .font(VTheme.mono(14, .light))
+                                .foregroundStyle(w.usedPercent >= 90 ? VTheme.alert : VTheme.text)
+                            Text(UsageFormat.shownSuffix.uppercased()).font(.system(size: 6.5, weight: .semibold)).kerning(0.8)
+                                .foregroundStyle(VTheme.faint)
+                        }
                     }
                 } else if u.hasLogs {
                     HStack(spacing: 8) {
@@ -231,105 +232,194 @@ private struct PetBubble: View {
 
 /// A small floating Voyager on the desktop. Drag it anywhere; hover (or click
 /// to pin) for plan limits; double-click for the mission-control panel;
-/// right-click for options.
+/// right-click for options. The pet and its bubble are separate windows: the
+/// pet's window never changes size or position when the bubble appears.
 final class PetController: NSObject {
     private var panel: NSPanel?
-    private var hosting: NSHostingView<PetView>?
+    private var bubble: NSPanel?
+    private var bubbleHosting: NSHostingView<PetBubbleView>?
     let model = PetModel()
     private let openPanel: () -> Void
     private var loadedSprite = false
+    private var hideWork: DispatchWorkItem?
 
     init(openPanel: @escaping () -> Void) {
         self.openPanel = openPanel
         super.init()
     }
 
+    var debugContentView: NSView? { panel?.contentView }
+
+    /// Developer aid: simulate hovering and report both window frames.
+    func debugHoverTest() {
+        let before = panel?.frame ?? .zero
+        setHover(true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            print("pet before:", before, "after hover:", self.panel?.frame ?? .zero,
+                  "bubble:", self.bubble?.frame ?? .zero, "visible:", self.bubble?.isVisible ?? false)
+            self.setHover(false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                print("after leave — pet:", self.panel?.frame ?? .zero, "bubble visible:", self.bubble?.isVisible ?? false)
+                fflush(stdout)
+            }
+        }
+    }
+
     /// Apply settings: show/hide, level, size, bubble mode.
     func apply() {
         guard Settings.petEnabled else {
             panel?.orderOut(nil)
+            bubble?.orderOut(nil)
             return
         }
-        if panel == nil { makePanel() }
+        if panel == nil { makePanels() }
         model.size = Settings.petSize.points
         model.mode = Settings.petLimits
-        panel?.level = Settings.petFloats ? .floating
-                                          : NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        let level = Settings.petFloats ? NSWindow.Level.floating
+                                       : NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        panel?.level = level
+        bubble?.level = level
         refresh()
-        layout(keepingPet: true)
+        placePet()
         panel?.orderFrontRegardless()
+        updateBubble(animated: false)
         if !loadedSprite {
             loadedSprite = true
             PetSprite.load { [weak self] frames in self?.model.frames = frames }
         }
     }
 
-    var debugContentView: NSView? { panel?.contentView }
-
     func refresh() {
         model.claude = UsageStore.shared.claude
         model.codex = UsageStore.shared.codex
+        if bubble?.isVisible == true { positionBubble() }
     }
 
-    private func makePanel() {
-        let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
-                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.hasShadow = false
-        p.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
-        p.isReleasedWhenClosed = false
+    private func makePanels() {
+        func makePanel() -> NSPanel {
+            let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
+                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            p.isOpaque = false
+            p.backgroundColor = .clear
+            p.hasShadow = false
+            p.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+            p.isReleasedWhenClosed = false
+            p.animationBehavior = .none
+            return p
+        }
+        let pet = makePanel()
         let hosting = NSHostingView(rootView: PetView(model: model))
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = .clear
         let container = PetContainer(controller: self)
+        hosting.autoresizingMask = [.width, .height]
         container.addSubview(hosting)
-        p.contentView = container
-        self.hosting = hosting
-        panel = p
-        let origin = Settings.petOrigin ?? {
+        pet.contentView = container
+        panel = pet
+
+        let b = makePanel()
+        let bh = NSHostingView(rootView: PetBubbleView(model: model))
+        bh.wantsLayer = true
+        bh.layer?.backgroundColor = .clear
+        let bc = BubbleContainer(controller: self)
+        bh.autoresizingMask = [.width, .height]
+        bc.addSubview(bh)
+        b.contentView = bc
+        bubble = b
+        bubbleHosting = bh
+
+        petOrigin = Settings.petOrigin ?? {
             let v = NSScreen.screens.first?.visibleFrame ?? .zero
             return NSPoint(x: v.maxX - Settings.petSize.points - 60, y: v.minY + 40)
         }()
-        petOrigin = origin
     }
 
-    /// Screen position of the sprite's bottom-left corner.
+    /// Screen position of the pet's bottom-left corner.
     private var petOrigin = NSPoint.zero
 
-    /// Resize the window around the pet (and bubble), keeping the pet fixed.
-    func layout(keepingPet: Bool) {
-        guard let panel, let hosting else { return }
-        let screen = NSScreen.screens.first { $0.frame.contains(petOrigin) } ?? NSScreen.main ?? NSScreen.screens[0]
-        model.bubbleOnLeft = petOrigin.x + model.size + 230 > screen.visibleFrame.maxX
-        hosting.layoutSubtreeIfNeeded()
-        let size = hosting.fittingSize
-        var x = petOrigin.x
-        if model.bubbleOnLeft && model.showsBubble { x -= size.width - model.size }
-        let y = petOrigin.y - (size.height - model.size) / 2
-        panel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
-        hosting.frame = NSRect(origin: .zero, size: size)
-        (panel.contentView as? PetContainer)?.petRect = NSRect(x: petOrigin.x - x, y: petOrigin.y - y, width: model.size, height: model.size)
+    private func placePet() {
+        guard let panel else { return }
+        panel.setFrame(NSRect(origin: petOrigin, size: NSSize(width: model.size, height: model.size)), display: true)
+        panel.contentView?.subviews.first?.frame = NSRect(x: 0, y: 0, width: model.size, height: model.size)
     }
 
-    // Interaction (from the container view).
-    func setHover(_ h: Bool) {
-        guard model.hover != h else { return }
-        model.hover = h
-        DispatchQueue.main.async { self.layout(keepingPet: true) }
+    /// Beside the pet, on whichever side has room, vertically centred on it.
+    private func positionBubble() {
+        guard let bubble, let bubbleHosting, let pet = panel else { return }
+        bubbleHosting.layoutSubtreeIfNeeded()
+        let size = bubbleHosting.fittingSize
+        let screen = NSScreen.screens.first { $0.frame.intersects(pet.frame) } ?? NSScreen.main ?? NSScreen.screens[0]
+        let vf = screen.visibleFrame
+        let gap: CGFloat = 4
+        var x = pet.frame.maxX + gap
+        if x + size.width > vf.maxX { x = pet.frame.minX - gap - size.width }
+        var y = pet.frame.midY - size.height / 2
+        y = min(max(y, vf.minY + 4), vf.maxY - size.height - 4)
+        bubble.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
+        bubbleHosting.frame = NSRect(origin: .zero, size: size)
+    }
+
+    private func updateBubble(animated: Bool = true) {
+        guard let bubble else { return }
+        let show = Settings.petEnabled && model.showsBubble
+        if show {
+            hideWork?.cancel()
+            positionBubble()
+            if !bubble.isVisible {
+                bubble.alphaValue = animated ? 0 : 1
+                bubble.orderFrontRegardless()
+                if animated {
+                    NSAnimationContext.runAnimationGroup { ctx in
+                        ctx.duration = 0.16
+                        bubble.animator().alphaValue = 1
+                    }
+                }
+            }
+        } else if bubble.isVisible {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.14
+                bubble.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                guard let self, !self.model.showsBubble else { return }
+                bubble.orderOut(nil)
+            })
+        }
+    }
+
+    // Interaction.
+
+    /// Hover over the pet or its bubble; leaving both hides the bubble after a short grace period.
+    func setHover(_ inside: Bool) {
+        if inside {
+            hideWork?.cancel()
+            if !model.hover { model.hover = true; updateBubble() }
+        } else {
+            hideWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                let mouse = NSEvent.mouseLocation
+                let over = [self.panel, self.bubble].contains { $0?.isVisible == true && $0!.frame.insetBy(dx: -2, dy: -2).contains(mouse) }
+                guard !over else { return }
+                self.model.hover = false
+                self.updateBubble()
+            }
+            hideWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        }
     }
 
     func move(by d: CGSize) {
         petOrigin.x += d.width
         petOrigin.y += d.height
-        layout(keepingPet: true)
+        placePet()
+        if bubble?.isVisible == true { positionBubble() }
     }
 
     func endMove() { Settings.petOrigin = petOrigin }
 
     func click() {
         model.pinned.toggle()
-        DispatchQueue.main.async { self.layout(keepingPet: true) }
+        updateBubble()
     }
 
     func doubleClick() { openPanel() }
@@ -356,6 +446,29 @@ final class PetController: NSObject {
     }
 }
 
+/// Keeps the bubble open while the pointer is over it.
+private final class BubbleContainer: NSView {
+    weak var controller: PetController?
+    private var tracking: NSTrackingArea?
+    init(controller: PetController) {
+        self.controller = controller
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = .clear
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+    override func mouseEntered(with event: NSEvent) { controller?.setHover(true) }
+    override func mouseExited(with event: NSEvent) { controller?.setHover(false) }
+    override func mouseUp(with event: NSEvent) { controller?.click() }
+}
+
 private final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
     init(title: String, action: @escaping () -> Void) {
@@ -371,7 +484,6 @@ private final class ClosureMenuItem: NSMenuItem {
 /// over the sprite itself (the bubble stays interactive SwiftUI).
 private final class PetContainer: NSView {
     weak var controller: PetController?
-    var petRect = NSRect.zero { didSet { updateTrackingAreas() } }
     private var tracking: NSTrackingArea?
     private var dragStart: NSPoint?
     private var dragged = false
@@ -397,8 +509,7 @@ private final class PetContainer: NSView {
     override func mouseExited(with event: NSEvent) { controller?.setHover(false) }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        let local = convert(point, from: superview)
-        return petRect.contains(local) ? self : super.hitTest(point)
+        frame.contains(point) ? self : nil
     }
 
     override func mouseDown(with event: NSEvent) {

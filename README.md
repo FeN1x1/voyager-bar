@@ -42,8 +42,9 @@ these screenshots are illustrative.)
 
 The menu bar shows one ring gauge per provider in its own colour — **Claude orange**,
 **OpenAI white** (black on a light menu bar) — with the limit that matters: Claude's
-**5-hour session** and Codex's **weekly** window by default (switchable to weekly, 5 h or
-the tightest one, as *used* or *left*). Numbers turn red at 90 %.
+**5-hour session** and Codex's **weekly** window by default, shown as **what is left** —
+the ring empties like a battery (switchable to weekly, 5 h or the tightest one, and to
+*used*). Numbers turn red when less than 10 % is left.
 
 - **Live telemetry** — distance from Earth ticking by the kilometre, light time, range rate,
   mission day, remaining plutonium-238, and where a signal sent at midnight is right now on
@@ -79,7 +80,7 @@ that is not what you pay.
 <p align="center"><img src="docs/pet.png" width="360" alt="Voyager desktop pet with its limits bubble"></p>
 
 A small Voyager that slowly turns and bobs wherever you drop it. Hover (or click to pin)
-for its bubble with the featured Claude and Codex limits and today's tokens; double-click
+for its bubble — a separate little window that fades in beside it, so the pet never moves — with the featured Claude and Codex limits and today's tokens; double-click
 for mission control; right-click for options. Its beacon is green, turns amber at 75 %
 and blinks red at 90 %; at 100 % Voyager dozes off. Choose in *Settings → Pet*: bubble on
 hover / always / never, size S–L, floating above windows or staying on the desktop.
@@ -92,7 +93,7 @@ Everything is in the panel (right-click the menu bar icon), in four tabs:
   pet), all displays or the main one, pause, camera (tour or a fixed shot), composition,
   motion, overlays, units, frame rate, antialiasing.
 - **Menu bar** — icon only / plan limits / tokens today, which limit per provider,
-  used or left, Claude limits on/off.
+  left (default) or used, Claude limits on/off.
 - **Pet** — show, bubble mode, size, float above windows.
 - **System** — pause on battery, launch at login, Explorer, save a still, set the current
   frame as the macOS wallpaper.

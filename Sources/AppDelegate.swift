@@ -49,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let args = CommandLine.arguments
         func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         if let d = arg("--sim-date"), let date = ISO8601DateFormatter().date(from: d) { SimClock.shared.jump(to: date) }
+        if args.contains("--pet-hover-test") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.pet.debugHoverTest() }
+        }
         if args.contains("--show-panel"), let button = statusItem.button {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.panel?.show(from: button, page: args.contains("--page-settings") ? .settings : .main) }
         }

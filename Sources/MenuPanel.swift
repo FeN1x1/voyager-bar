@@ -463,9 +463,11 @@ private struct SegmentGauge: View {
     let used: Double
     var segments = 28
     var body: some View {
+        // Filled segments = what the number shows (left by default, like a battery).
+        let fill = Settings.showRemaining ? max(0, 100 - used) : used
         HStack(spacing: 2) {
             ForEach(0..<segments, id: \.self) { i in
-                let on = Double(i) < (used / 100 * Double(segments)).rounded(.up)
+                let on = Double(i) < (fill / 100 * Double(segments)).rounded(.up)
                 RoundedRectangle(cornerRadius: 1)
                     .fill(on ? UsageFormat.healthColor(used: used) : Color.white.opacity(0.07))
                     .frame(height: 7)
@@ -529,7 +531,10 @@ private struct ProviderPanel: View {
                             HStack(alignment: .firstTextBaseline) {
                                 Text(w.title.uppercased()).font(.system(size: 8.5, weight: .semibold)).kerning(1).foregroundStyle(VTheme.dim)
                                 Spacer()
-                                Text(String(format: "%.0f%%", w.usedPercent)).font(VTheme.mono(11)).foregroundStyle(UsageFormat.healthColor(used: w.usedPercent))
+                                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                    Text(String(format: "%.0f%%", UsageFormat.shown(w))).font(VTheme.mono(11)).foregroundStyle(UsageFormat.healthColor(used: w.usedPercent))
+                                    Text(UsageFormat.shownSuffix.uppercased()).font(.system(size: 7, weight: .semibold)).kerning(0.8).foregroundStyle(VTheme.faint)
+                                }
                             }
                             SegmentGauge(used: w.usedPercent)
                             HStack {
@@ -653,7 +658,7 @@ private struct SettingsPage: View {
             section("Featured limit") {
                 row("Claude") { Segmented(options: Settings.LimitChoice.allCases.map { ($0.title, $0) }, selection: $model.claudeMenuLimit).frame(width: 210) }
                 row("Codex") { Segmented(options: Settings.LimitChoice.allCases.map { ($0.title, $0) }, selection: $model.codexMenuLimit).frame(width: 210) }
-                row("Numbers") { Segmented(options: [("Used", false), ("Left", true)], selection: $model.showRemaining).frame(width: 210) }
+                row("Numbers") { Segmented(options: [("Left", true), ("Used", false)], selection: $model.showRemaining).frame(width: 210) }
                 Text("Claude plans are paced by the 5-hour session, Codex by the week — also used by the pet.")
                     .font(.system(size: 9.5)).foregroundStyle(VTheme.faint).fixedSize(horizontal: false, vertical: true)
             }
