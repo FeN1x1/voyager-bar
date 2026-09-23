@@ -1,0 +1,23 @@
+VOYAGER BAR — INSTALLATION
+==========================
+
+1. Drag "Voyager Bar" onto the Applications folder.
+
+2. Open it from Applications.
+   This free build is not notarized by Apple, so the first time macOS says it
+   "cannot verify" the app. Click Done, then open
+   System Settings → Privacy & Security, scroll down and click "Open Anyway"
+   next to Voyager Bar. You only need to do this once.
+
+   (Or, in Terminal:  xattr -dr com.apple.quarantine "/Applications/Voyager Bar.app")
+
+3. Voyager Bar lives in the menu bar (the little Voyager silhouette).
+   The live wallpaper appears behind your desktop icons.
+   Left-click: mission control panel. Right-click: settings.
+
+The easiest way to install or update is one command in Terminal:
+
+    curl -fsSL https://raw.githubusercontent.com/FeN1x1/voyager-bar/main/install.sh | bash
+
+Requirements: macOS 13 Ventura or newer (Apple silicon or Intel).
+Project page: https://github.com/FeN1x1/voyager-bar
