@@ -1,20 +1,21 @@
 import Foundation
-import Security
 
 /// Claude subscription limits (5-hour session, weekly, per-model weekly) from
 /// the same endpoint Claude Code's `/usage` uses.
 ///
 /// Read-only by design: the OAuth token is read from Claude Code's own store
 /// (`~/.claude/.credentials.json` or the "Claude Code-credentials" Keychain
-/// item) and is never refreshed or written back, so Claude Code's sign-in is
-/// never disturbed. When the token has expired, open Claude Code once.
+/// item, via `/usr/bin/security` so no password prompt appears) and is never
+/// refreshed or written back, so Claude Code's sign-in is never disturbed.
+/// When the token has expired, the last known values stay visible until
+/// Claude Code is used again.
 enum ClaudePlanLimits {
     enum Failure: Error, Equatable {
         case noCredentials, denied, expired, http(Int), network(String), format
 
         var message: String {
             switch self {
-            case .noCredentials: return "Claude Code sign-in not found"
+            case .noCredentials: return "Claude Code sign-in not found — sign in with `claude` once"
             case .denied: return "Keychain access was declined"
             case .expired: return "Sign-in expired — open Claude Code to refresh it"
             case let .http(code): return code == 429 ? "Rate limited, retrying later" : "Server returned \(code)"
@@ -36,28 +37,38 @@ enum ClaudePlanLimits {
         return Credentials(token: token, expiresAt: exp, plan: oauth["subscriptionType"] as? String)
     }
 
+    /// Reads Claude Code's sign-in without any password prompt.
+    ///
+    /// Claude Code stores it with the `security` command-line tool, so
+    /// `/usr/bin/security` is on that Keychain item's access list and may read it
+    /// silently — whereas calling the Keychain API from this app would make macOS
+    /// ask for the login password (again after every update, as the signature
+    /// changes). The token is only read, never refreshed or written back.
     private static func loadCredentials() -> Swift.Result<Credentials, Failure> {
         let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/.credentials.json")
         if let data = try? Data(contentsOf: file), let c = parse(data) { return .success(c) }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        switch status {
-        case errSecSuccess:
-            guard let data = item as? Data else { return .failure(.format) }
-            // Some versions store the JSON hex-encoded.
-            if let c = parse(data) { return .success(c) }
-            if let s = String(data: data, encoding: .utf8), let decoded = hexDecode(s), let c = parse(decoded) { return .success(c) }
-            return .failure(.format)
-        case errSecItemNotFound: return .failure(.noCredentials)
-        case errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed: return .failure(.denied)
-        default: return .failure(.network("Keychain error \(status)"))
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        p.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+        let out = Pipe(), err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        do { try p.run() } catch { return .failure(.network("Could not run /usr/bin/security")) }
+        // Drain the pipes before waiting so a large payload cannot deadlock.
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        _ = err.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        switch p.terminationStatus {
+        case 0: break
+        case 44: return .failure(.noCredentials)          // errSecItemNotFound
+        case 128, 51: return .failure(.denied)             // user cancelled / not allowed
+        default: return .failure(.network("Keychain read failed (\(p.terminationStatus))"))
         }
+        let trimmed = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        if let c = parse(Data(trimmed.utf8)) { return .success(c) }
+        // Some Claude Code versions store the JSON hex-encoded.
+        if let decoded = hexDecode(trimmed), let c = parse(decoded) { return .success(c) }
+        return .failure(.format)
     }
 
     private static func hexDecode(_ s: String) -> Data? {

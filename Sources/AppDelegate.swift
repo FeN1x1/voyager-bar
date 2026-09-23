@@ -10,6 +10,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var powerSource: CFRunLoopSource?
     private var screenRebuild: DispatchWorkItem?
     private var panel: MenuPanelController?
+    private lazy var pet = PetController(openPanel: { [weak self] in
+        guard let self, let button = self.statusItem.button else { return }
+        self.panel?.show(from: button)
+    })
     private var explorer: ExplorerWindowController?
     private var usageHUDTimer: Timer?
 
@@ -30,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildWindows()
         observeSystem()
         UsageStore.shared.start()
+        pet.apply()
         NotificationCenter.default.addObserver(forName: UsageStore.didChange, object: nil, queue: .main) { [weak self] _ in
             self?.usageChanged()
         }
@@ -70,6 +75,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
                 guard let self, let c = self.controllers.first, let data = self.pngData(c.compositeSnapshot()) else { return }
                 try? data.write(to: URL(fileURLWithPath: path))
+                if let petView = self.pet.debugContentView, let layer = petView.layer {
+                    let size = petView.bounds.size
+                    if let ctx = CGContext(data: nil, width: Int(size.width * 2), height: Int(size.height * 2), bitsPerComponent: 8, bytesPerRow: 0,
+                                           space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                        ctx.scaleBy(x: 2, y: 2)
+                        ctx.setFillColor(CGColor(gray: 0.3, alpha: 1)); ctx.fill(CGRect(origin: .zero, size: size))
+                        ctx.translateBy(x: 0, y: size.height); ctx.scaleBy(x: 1, y: -1)
+                        layer.render(in: ctx)
+                        if let img = ctx.makeImage() {
+                            try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(
+                                to: URL(fileURLWithPath: path.replacingOccurrences(of: ".png", with: "-pet.png")))
+                        }
+                    }
+                }
                 if let panelView = self.panel?.contentView, let layer = panelView.layer {
                     let size = panelView.bounds.size
                     if let ctx = CGContext(data: nil, width: Int(size.width * 2), height: Int(size.height * 2), bitsPerComponent: 8, bytesPerRow: 0,
@@ -115,9 +134,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controllers.forEach { $0.dispose() }
     }
 
+    /// Displays that get the live wallpaper (none when it is switched off).
+    private var wallpaperScreens: [NSScreen] {
+        guard Settings.wallpaperEnabled else { return [] }
+        return Settings.wallpaperMainDisplayOnly ? Array(NSScreen.screens.prefix(1)) : NSScreen.screens
+    }
+    private var wallpaperConfig = ""
+
     private func rebuildWindows() {
         controllers.forEach { $0.dispose() }
-        controllers = NSScreen.screens.map { screen in
+        wallpaperConfig = "\(Settings.wallpaperEnabled) \(Settings.wallpaperMainDisplayOnly)"
+        controllers = wallpaperScreens.map { screen in
             let c = WallpaperController(screen: screen)
             c.onOcclusionChange = { [weak self] in self?.updateRendering() }
             return c
@@ -128,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Identity of the display layout; the Dock or menu bar changing size only
     /// moves the HUD, whereas new/removed/rescaled displays rebuild the scenes.
     private var screenSignature: [String] {
-        NSScreen.screens.map { "\($0.displayID ?? 0) \($0.frame) \($0.backingScaleFactor)" }
+        wallpaperScreens.map { "\($0.displayID ?? 0) \($0.frame) \($0.backingScaleFactor)" }
     }
 
     private func scheduleRebuild() {
@@ -263,39 +290,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Menu bar: the antenna plus, optionally, the tightest plan limit per
-    /// provider (colour-coded) or today's total tokens.
+    /// Menu bar: the Voyager glyph plus, per provider, a ring gauge in the
+    /// provider's colour (Claude orange, OpenAI white/black like the menu bar
+    /// text) and its featured limit — or today's tokens, or nothing.
     private func updateStatusButton() {
         guard let button = statusItem?.button else { return }
-        let store = UsageStore.shared
-        let title = NSMutableAttributedString()
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .medium)
-        switch Settings.menuBarStyle {
-        case .icon:
-            break
-        case .limits:
-            for u in [store.claude, store.codex] {
-                guard let w = u.tightestLimit else { continue }
-                let remaining = 100 - w.usedPercent
-                let color: NSColor = remaining < 20 ? .systemRed : remaining < 50 ? .systemOrange : .systemGreen
-                title.append(NSAttributedString(string: " ●", attributes: [.font: NSFont.systemFont(ofSize: 8), .foregroundColor: color,
-                                                                            .baselineOffset: 1.5]))
-                title.append(NSAttributedString(string: String(format: "%@ %.0f%%", u.provider == .claude ? "C" : "O", w.usedPercent),
-                                                attributes: [.font: font]))
-            }
-            if title.length == 0, store.claude.today.total + store.codex.today.total > 0 { fallthrough }
-        case .tokens:
-            let total = store.claude.today.total + store.codex.today.total
-            if total > 0 { title.append(NSAttributedString(string: " " + UsageFormat.tokens(total), attributes: [.font: font])) }
-        }
-        if !SimClock.shared.isLive {
-            title.append(NSAttributedString(string: " ⏱", attributes: [.font: NSFont.systemFont(ofSize: 10)]))
-        }
+        let (title, tips) = StatusTitle.make(store: UsageStore.shared)
         button.attributedTitle = title
+        button.toolTip = (["Voyager Bar — click for mission control, right-click for settings"] + tips).joined(separator: "\n")
     }
 
     private func usageChanged() {
         updateStatusButton()
+        pet.refresh()
         if panel?.isShown == true { panel?.layout() }
         for c in controllers where !c.isOccluded { c.usageHUD.refresh() }
     }
@@ -316,7 +323,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func settingsChanged() {
+        if wallpaperConfig != "\(Settings.wallpaperEnabled) \(Settings.wallpaperMainDisplayOnly)" { rebuildWindows() }
         controllers.forEach { $0.applySettings() }
+        pet.apply()
         updateRendering()
         updateStatusButton()
         usageChanged()

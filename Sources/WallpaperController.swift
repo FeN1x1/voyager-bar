@@ -43,10 +43,67 @@ enum Settings {
         get { d.object(forKey: "showUsageOnWallpaper") as? Bool ?? true }
         set { d.set(newValue, forKey: "showUsageOnWallpaper") }
     }
-    /// The user connected Claude plan limits (reads Claude Code's sign-in, read-only).
+    /// Show Claude plan limits (reads Claude Code's sign-in through /usr/bin/security, read-only).
     static var claudeLimitsEnabled: Bool {
-        get { d.bool(forKey: "claudeLimitsEnabled") }
-        set { d.set(newValue, forKey: "claudeLimitsEnabled") }
+        get { d.object(forKey: "claudeLimitsOn") as? Bool ?? true }
+        set { d.set(newValue, forKey: "claudeLimitsOn") }
+    }
+
+    /// Which plan window the menu bar and the pet show for each provider.
+    enum LimitChoice: String, CaseIterable { case session, weekly, tightest
+        var title: String { self == .session ? "5 h" : self == .weekly ? "Weekly" : "Tightest" }
+    }
+    static var claudeMenuLimit: LimitChoice {
+        get { LimitChoice(rawValue: d.string(forKey: "claudeMenuLimit") ?? "") ?? .session }
+        set { d.set(newValue.rawValue, forKey: "claudeMenuLimit") }
+    }
+    static var codexMenuLimit: LimitChoice {
+        get { LimitChoice(rawValue: d.string(forKey: "codexMenuLimit") ?? "") ?? .weekly }
+        set { d.set(newValue.rawValue, forKey: "codexMenuLimit") }
+    }
+    /// Show percentages as "used" (default) or "left".
+    static var showRemaining: Bool {
+        get { d.bool(forKey: "showRemaining") }
+        set { d.set(newValue, forKey: "showRemaining") }
+    }
+
+    /// Live wallpaper on/off and on which displays.
+    static var wallpaperEnabled: Bool {
+        get { d.object(forKey: "wallpaperEnabled") as? Bool ?? true }
+        set { d.set(newValue, forKey: "wallpaperEnabled") }
+    }
+    static var wallpaperMainDisplayOnly: Bool {
+        get { d.bool(forKey: "wallpaperMainOnly") }
+        set { d.set(newValue, forKey: "wallpaperMainOnly") }
+    }
+
+    /// Desktop pet.
+    enum PetLimits: String, CaseIterable { case hover, always, never
+        var title: String { rawValue.capitalized }
+    }
+    enum PetSize: String, CaseIterable { case small, medium, large
+        var points: CGFloat { self == .small ? 72 : self == .medium ? 100 : 136 }
+        var title: String { self == .small ? "S" : self == .medium ? "M" : "L" }
+    }
+    static var petEnabled: Bool {
+        get { d.object(forKey: "petEnabled") as? Bool ?? true }
+        set { d.set(newValue, forKey: "petEnabled") }
+    }
+    static var petLimits: PetLimits {
+        get { PetLimits(rawValue: d.string(forKey: "petLimits") ?? "") ?? .hover }
+        set { d.set(newValue.rawValue, forKey: "petLimits") }
+    }
+    static var petSize: PetSize {
+        get { PetSize(rawValue: d.string(forKey: "petSize") ?? "") ?? .medium }
+        set { d.set(newValue.rawValue, forKey: "petSize") }
+    }
+    static var petFloats: Bool {
+        get { d.object(forKey: "petFloats") as? Bool ?? true }
+        set { d.set(newValue, forKey: "petFloats") }
+    }
+    static var petOrigin: NSPoint? {
+        get { (d.array(forKey: "petOrigin") as? [Double]).flatMap { $0.count == 2 ? NSPoint(x: $0[0], y: $0[1]) : nil } }
+        set { d.set(newValue.map { [Double($0.x), Double($0.y)] }, forKey: "petOrigin") }
     }
     static var motionSpeed: Float {
         get { d.object(forKey: "motionSpeed") as? Float ?? 1 }

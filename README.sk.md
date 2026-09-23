@@ -110,6 +110,20 @@ Požiadavky: macOS 13 Ventura alebo novší, Xcode Command Line Tools
 
 Aplikácia beží v menu bare (malá silueta Voyagera), nemá ikonu v Docku. Ľavý klik otvorí panel riadiaceho strediska, pravý klik nastavenia.
 
+## Menu bar, maskot a nastavenia (1.1)
+
+- **Menu bar:** jeden krúžkový ukazovateľ na poskytovateľa v jeho farbe — Claude oranžová,
+  OpenAI biela (na svetlej lište čierna). Pre Claude sa predvolene ukazuje **5-hodinový**
+  limit, pre Codex **týždenný**; dá sa prepnúť (5 h / týždeň / najtesnejší, použité / zostáva).
+- **Claude limity bez hesla:** Claude Code ukladá prihlásenie do Keychainu cez nástroj
+  `security`, ktorému táto položka dôveruje — Voyager Bar ho číta rovnako, takže macOS
+  nepýta heslo. Token sa iba číta, nikdy neobnovuje ani nezapisuje.
+- **Maskot:** malý rotujúci Voyager kdekoľvek na obrazovke; pri nabehnutí (alebo po kliknutí)
+  bublina s limitmi, dvojklik otvorí panel, pravý klik možnosti. Majáčik: zelená → jantárová
+  (75 %) → blikajúca červená (90 %), pri 100 % Voyager „zaspí".
+- **Nastavenia v 4 záložkách:** Tapeta (živá tapeta zap/vyp, monitory, kamera…), Menu bar,
+  Maskot, Systém.
+
 ## Panel v menu bare
 
 Čierny panel v štýle riadiaceho strediska misie: živý render sondy, vzdialenosť od Zeme

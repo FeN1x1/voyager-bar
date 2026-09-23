@@ -46,3 +46,87 @@ enum StatusGlyph {
         return img
     }()
 }
+
+/// Provider identity marks used in the menu bar and by the pet.
+enum ProviderMark {
+    /// Claude: Anthropic's warm orange. OpenAI: neutral — white on a dark menu
+    /// bar, black on a light one (the menu bar's own text colour).
+    static func color(_ p: AIProvider, onDark: Bool = false) -> NSColor {
+        p == .claude ? NSColor(srgbRed: 0.85, green: 0.47, blue: 0.34, alpha: 1) : (onDark ? NSColor(white: 0.93, alpha: 1) : .labelColor)
+    }
+
+    /// A small ring gauge: faint track, arc = used share, drawn lazily so dynamic
+    /// colours follow the menu bar's appearance.
+    static func ring(provider: AIProvider, used: Double, size: CGFloat = 14, onDark: Bool = false) -> NSImage {
+        NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            let c = color(provider, onDark: onDark)
+            let r = rect.insetBy(dx: 1.4, dy: 1.4)
+            let center = NSPoint(x: r.midX, y: r.midY), radius = r.width / 2
+            let track = NSBezierPath(ovalIn: r)
+            track.lineWidth = 2
+            c.withAlphaComponent(0.28).setStroke()
+            track.stroke()
+            let f = max(0, min(1, used / 100))
+            if f > 0.005 {
+                let arc = NSBezierPath()
+                arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * f, clockwise: true)
+                arc.lineWidth = 2.2
+                arc.lineCapStyle = .round
+                (used >= 90 ? NSColor.systemRed : c).setStroke()
+                arc.stroke()
+            }
+            // A small centre dot keeps the mark recognisable at 0 %.
+            c.setFill()
+            NSBezierPath(ovalIn: NSRect(x: center.x - 1.6, y: center.y - 1.6, width: 3.2, height: 3.2)).fill()
+            return true
+        }
+    }
+}
+
+/// The status item's text: per provider a ring in its colour and the featured
+/// limit, or today's tokens.
+enum StatusTitle {
+    static func make(store: UsageStore) -> (NSAttributedString, [String]) {
+        let title = NSMutableAttributedString()
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        func gap(_ w: CGFloat) {
+            let a = NSTextAttachment()
+            a.image = NSImage(size: NSSize(width: w, height: 1))
+            title.append(NSAttributedString(attachment: a))
+        }
+        var tips = [String]()
+        switch Settings.menuBarStyle {
+        case .icon:
+            break
+        case .limits:
+            for u in [store.claude, store.codex] {
+                guard let w = u.featuredLimit else { continue }
+                gap(title.length == 0 ? 7 : 11)
+                let ring = NSTextAttachment()
+                ring.image = ProviderMark.ring(provider: u.provider, used: w.usedPercent)
+                ring.bounds = CGRect(x: 0, y: -2.5, width: 14, height: 14)
+                title.append(NSAttributedString(attachment: ring))
+                gap(4)
+                let shown = Settings.showRemaining ? max(0, 100 - w.usedPercent) : w.usedPercent
+                title.append(NSAttributedString(string: String(format: "%.0f%%", shown),
+                                                attributes: [.font: font, .foregroundColor: w.usedPercent >= 90 ? NSColor.systemRed : NSColor.labelColor]))
+                tips.append("\(u.provider.title) · \(w.title): \(Int(w.usedPercent.rounded()))% used"
+                            + (UsageFormat.countdown(to: w.resetsAt).map { ", \($0)" } ?? ""))
+            }
+            if title.length == 0, store.claude.today.total + store.codex.today.total > 0 { fallthrough }
+        case .tokens:
+            let total = store.claude.today.total + store.codex.today.total
+            if total > 0 {
+                gap(6)
+                title.append(NSAttributedString(string: UsageFormat.tokens(total), attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
+                tips.append("\(UsageFormat.tokens(total)) tokens today")
+            }
+        }
+        if !SimClock.shared.isLive {
+            gap(6)
+            title.append(NSAttributedString(string: "⏱", attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.labelColor]))
+            tips.append("Timeline is not live")
+        }
+        return (title, tips)
+    }
+}

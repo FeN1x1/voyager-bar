@@ -97,6 +97,8 @@ func runUsageReport() -> Int32 {
     let model = MenuPanelModel(actions: MenuActions(openExplorer: {}, saveStill: {}, setSystemWallpaper: {}, showAbout: {},
                                                     quit: {}, settingsChanged: {}, setPaused: { _ in }, isPaused: { false }))
     model.page = settings ? .settings : .main
+    if let i = CommandLine.arguments.firstIndex(of: "--settings-tab"), i + 1 < CommandLine.arguments.count,
+       let t = MenuPanelModel.SettingsTab.allCases.first(where: { $0.rawValue.lowercased().hasPrefix(CommandLine.arguments[i + 1]) }) { model.tab = t }
     let sem = DispatchSemaphore(value: 0)
     HeroImage.load { img in model.hero = img; sem.signal() }
     while sem.wait(timeout: .now() + 0.05) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
@@ -122,6 +124,71 @@ func runUsageReport() -> Int32 {
 }
 
 let arguments = CommandLine.arguments
+/// Menu bar item preview on dark and light bars (demo or real usage).
+@MainActor func runStatusRender(_ out: String) -> Int32 {
+    if CommandLine.arguments.contains("--demo") { UsageStore.shared.loadDemo() } else { UsageStore.shared.loadNow() }
+    let (title, _) = StatusTitle.make(store: UsageStore.shared)
+    let scale: CGFloat = 4
+    let w = title.size().width + 22 + 16, h: CGFloat = 24
+    let img = NSImage(size: NSSize(width: w * scale, height: h * 2 * scale))
+    img.lockFocus()
+    for (i, name) in [NSAppearance.Name.darkAqua, .aqua].enumerated() {
+        NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
+            let y = CGFloat(1 - i) * h * scale
+            (i == 0 ? NSColor(white: 0.1, alpha: 1) : NSColor(white: 0.93, alpha: 1)).setFill()
+            NSRect(x: 0, y: y, width: w * scale, height: h * scale).fill()
+            NSGraphicsContext.current?.cgContext.saveGState()
+            NSGraphicsContext.current?.cgContext.translateBy(x: 0, y: y)
+            NSGraphicsContext.current?.cgContext.scaleBy(x: scale, y: scale)
+            let glyph = NSImage(size: StatusGlyph.image.size, flipped: false) { r in
+                StatusGlyph.image.draw(in: r); NSColor.labelColor.set(); r.fill(using: .sourceAtop); return true }
+            glyph.draw(in: NSRect(x: 8, y: 4, width: 22, height: 16))
+            title.draw(at: NSPoint(x: 30, y: 5))
+            NSGraphicsContext.current?.cgContext.restoreGState()
+        }
+    }
+    img.unlockFocus()
+    guard let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return 2 }
+    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
+    return 0
+}
+
+/// Desktop pet preview with the limits bubble.
+@MainActor func runPetRender(_ out: String) -> Int32 {
+    if CommandLine.arguments.contains("--demo") { UsageStore.shared.loadDemo() } else { UsageStore.shared.loadNow() }
+    let model = PetModel()
+    model.mode = .always
+    model.claude = UsageStore.shared.claude
+    model.codex = UsageStore.shared.codex
+    let sem = DispatchSemaphore(value: 0)
+    PetSprite.load { f in model.frames = f; sem.signal() }
+    while sem.wait(timeout: .now() + 0.05) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    let view = PetView(model: model).padding(20).background(Color(white: 0.35))
+    let r = ImageRenderer(content: view)
+    r.scale = 2
+    guard let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return 2 }
+    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
+    // Also a strip of sprite frames.
+    if let first = model.frames.first {
+        let n = min(8, model.frames.count), step = model.frames.count / n
+        let ctx = CGContext(data: nil, width: first.width * n, height: first.height, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(gray: 0.3, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: first.width * n, height: first.height))
+        for k in 0..<n { ctx.draw(model.frames[k * step], in: CGRect(x: k * first.width, y: 0, width: first.width, height: first.height)) }
+        if let strip = ctx.makeImage() {
+            try? NSBitmapImageRep(cgImage: strip).representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: out.replacingOccurrences(of: ".png", with: "-frames.png")))
+        }
+    }
+    return 0
+}
+
+if let i = arguments.firstIndex(of: "--render-statusbar"), i + 1 < arguments.count {
+    exit(MainActor.assumeIsolated { runStatusRender(arguments[i + 1]) })
+}
+if let i = arguments.firstIndex(of: "--render-pet"), i + 1 < arguments.count {
+    exit(MainActor.assumeIsolated { runPetRender(arguments[i + 1]) })
+}
 if arguments.contains("--milestones") {
     let f = DateFormatter()
     f.timeZone = TimeZone(identifier: "UTC")

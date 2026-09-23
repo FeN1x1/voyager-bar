@@ -178,6 +178,23 @@ final class MenuPanelModel: ObservableObject {
     @Published var pauseOnBattery = Settings.pauseOnBattery { didSet { Settings.pauseOnBattery = pauseOnBattery; actions.settingsChanged() } }
     @Published var menuBarStyle = Settings.menuBarStyle { didSet { Settings.menuBarStyle = menuBarStyle; actions.settingsChanged() } }
     @Published var paused = false { didSet { actions.setPaused(paused) } }
+    @Published var wallpaperEnabled = Settings.wallpaperEnabled { didSet { Settings.wallpaperEnabled = wallpaperEnabled; actions.settingsChanged() } }
+    @Published var mainDisplayOnly = Settings.wallpaperMainDisplayOnly { didSet { Settings.wallpaperMainDisplayOnly = mainDisplayOnly; actions.settingsChanged() } }
+    @Published var claudeMenuLimit = Settings.claudeMenuLimit { didSet { Settings.claudeMenuLimit = claudeMenuLimit; actions.settingsChanged() } }
+    @Published var codexMenuLimit = Settings.codexMenuLimit { didSet { Settings.codexMenuLimit = codexMenuLimit; actions.settingsChanged() } }
+    @Published var showRemaining = Settings.showRemaining { didSet { Settings.showRemaining = showRemaining; actions.settingsChanged() } }
+    @Published var petEnabled = Settings.petEnabled { didSet { Settings.petEnabled = petEnabled; actions.settingsChanged() } }
+    @Published var petLimits = Settings.petLimits { didSet { Settings.petLimits = petLimits; actions.settingsChanged() } }
+    @Published var petSize = Settings.petSize { didSet { Settings.petSize = petSize; actions.settingsChanged() } }
+    @Published var petFloats = Settings.petFloats { didSet { Settings.petFloats = petFloats; actions.settingsChanged() } }
+    @Published var claudeLimits = Settings.claudeLimitsEnabled {
+        didSet {
+            guard claudeLimits != Settings.claudeLimitsEnabled else { return }
+            if claudeLimits { UsageStore.shared.connectClaudeLimits() } else { UsageStore.shared.disconnectClaudeLimits() }
+        }
+    }
+    enum SettingsTab: String, CaseIterable { case wallpaper = "Wallpaper", menuBar = "Menu bar", pet = "Pet", system = "System" }
+    @Published var tab: SettingsTab = .wallpaper
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled {
         didSet {
             guard launchAtLogin != (SMAppService.mainApp.status == .enabled) else { return }
@@ -198,6 +215,11 @@ final class MenuPanelModel: ObservableObject {
 
     func refreshFromSettings() {
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        if petEnabled != Settings.petEnabled { petEnabled = Settings.petEnabled }
+        if petLimits != Settings.petLimits { petLimits = Settings.petLimits }
+        if petSize != Settings.petSize { petSize = Settings.petSize }
+        if petFloats != Settings.petFloats { petFloats = Settings.petFloats }
+        if claudeLimits != Settings.claudeLimitsEnabled { claudeLimits = Settings.claudeLimitsEnabled }
         if paused != actions.isPaused() { paused = actions.isPaused() }
     }
 }
@@ -528,7 +550,7 @@ private struct ProviderPanel: View {
                     Image(systemName: "link").font(.system(size: 10))
                     VStack(alignment: .leading, spacing: 1) {
                         Text("CONNECT PLAN LIMITS").font(.system(size: 8.5, weight: .bold)).kerning(1.2)
-                        Text("Reads Claude Code's sign-in, read-only · one Keychain prompt").font(.system(size: 9)).opacity(0.7)
+                        Text("Reads Claude Code's sign-in, read-only · no password needed").font(.system(size: 9)).opacity(0.7)
                     }
                     Spacer()
                 }
@@ -587,51 +609,89 @@ private struct SettingsPage: View {
             .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
             Hairline()
             VStack(alignment: .leading, spacing: 16) {
-                    section("Wallpaper") {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Camera").font(.system(size: 11.5)).foregroundStyle(VTheme.text.opacity(0.85))
-                                Spacer()
-                                Text(model.cameraMode.title).font(.system(size: 9.5)).foregroundStyle(VTheme.faint)
-                            }
-                            Segmented(options: [("Tour", CameraMode.tour), ("Hero", .hero), ("Side", .profile), ("Home", .home), ("Outbound", .outbound)],
-                                      selection: $model.cameraMode)
-                        }
-                        row("Composition") { Segmented(options: Composition.allCases.map { ($0.title, $0) }, selection: $model.composition).frame(width: 190) }
-                        row("Motion") { Segmented(options: [("Slow", Float(0.5)), ("Normal", Float(1)), ("Fast", Float(2))], selection: $model.speed).frame(width: 190) }
-                        row("Frame rate") { Segmented(options: [("15", 15), ("30", 30), ("60", 60)], selection: $model.fps).frame(width: 190) }
-                        row("Units") { Segmented(options: [("km", HUDView.Units.metric), ("miles", HUDView.Units.imperial)], selection: $model.units).frame(width: 190) }
-                        Switch(title: "Telemetry overlay", isOn: $model.telemetry)
-                        Switch(title: "AI usage on wallpaper", isOn: $model.usageOnWallpaper)
-                        Switch(title: "High-quality antialiasing", detail: "4× MSAA — sharper booms, more video memory", isOn: $model.highQuality)
-                        Switch(title: "Pause animation", isOn: $model.paused)
-                    }
-                    section("Menu bar") {
-                        Segmented(options: [("Icon", Settings.MenuBarStyle.icon), ("Limits", .limits), ("Tokens", .tokens)], selection: $model.menuBarStyle)
-                    }
-                    section("System") {
-                        Switch(title: "Pause on battery power", isOn: $model.pauseOnBattery)
-                        Switch(title: "Launch at login", isOn: $model.launchAtLogin)
-                        if let e = model.loginError { Text(e).font(.system(size: 9.5)).foregroundStyle(VTheme.alert) }
-                    }
-                    section("AI usage") {
-                        if Settings.claudeLimitsEnabled {
-                            TextAction(title: "Disconnect Claude plan limits", symbol: "link.badge.plus") { UsageStore.shared.disconnectClaudeLimits() }
-                        } else {
-                            TextAction(title: "Connect Claude plan limits", symbol: "link") { UsageStore.shared.connectClaudeLimits() }
-                        }
-                        Text("Token counts are read locally from Claude Code and Codex session logs. Costs are API-equivalent at list prices.")
-                            .font(.system(size: 9.5)).foregroundStyle(VTheme.faint).fixedSize(horizontal: false, vertical: true)
-                    }
-                    section("Actions") {
-                        TextAction(title: "Open Explorer & timeline", symbol: "scope") { model.actions.openExplorer() }
-                        TextAction(title: "Save still to Desktop", symbol: "camera") { model.actions.saveStill() }
-                        TextAction(title: "Use current frame as macOS wallpaper", symbol: "photo.on.rectangle") { model.actions.setSystemWallpaper() }
-                        TextAction(title: "About Voyager Bar", symbol: "info.circle") { model.actions.showAbout() }
-                        TextAction(title: "Quit", symbol: "power") { model.actions.quit() }
-                    }
+                Segmented(options: MenuPanelModel.SettingsTab.allCases.map { ($0.rawValue, $0) }, selection: $model.tab)
+                switch model.tab {
+                case .wallpaper: wallpaperTab
+                case .menuBar: menuBarTab
+                case .pet: petTab
+                case .system: systemTab
                 }
+            }
             .padding(.horizontal, 18).padding(.vertical, 16)
+        }
+    }
+
+    private var wallpaperTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            section("Live wallpaper") {
+                Switch(title: "Show the live wallpaper", detail: "Off: Voyager Bar runs in the menu bar only and frees the GPU", isOn: $model.wallpaperEnabled)
+                row("Displays") { Segmented(options: [("All", false), ("Main only", true)], selection: $model.mainDisplayOnly).frame(width: 190) }
+                Switch(title: "Pause animation", detail: "Keeps the current frame, no rendering", isOn: $model.paused)
+            }
+            section("Camera") {
+                Segmented(options: [("Tour", CameraMode.tour), ("Hero", .hero), ("Side", .profile), ("Home", .home), ("Outbound", .outbound)],
+                          selection: $model.cameraMode)
+                row("Composition") { Segmented(options: Composition.allCases.map { ($0.title, $0) }, selection: $model.composition).frame(width: 190) }
+                row("Motion") { Segmented(options: [("Slow", Float(0.5)), ("Normal", Float(1)), ("Fast", Float(2))], selection: $model.speed).frame(width: 190) }
+            }
+            section("Overlays & quality") {
+                Switch(title: "Telemetry overlay", isOn: $model.telemetry)
+                Switch(title: "AI usage overlay", isOn: $model.usageOnWallpaper)
+                row("Units") { Segmented(options: [("km", HUDView.Units.metric), ("miles", HUDView.Units.imperial)], selection: $model.units).frame(width: 190) }
+                row("Frame rate") { Segmented(options: [("15", 15), ("30", 30), ("60", 60)], selection: $model.fps).frame(width: 190) }
+                Switch(title: "High-quality antialiasing", detail: "4× MSAA — sharper booms, more video memory", isOn: $model.highQuality)
+            }
+        }
+    }
+
+    private var menuBarTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            section("Menu bar shows") {
+                Segmented(options: [("Icon only", Settings.MenuBarStyle.icon), ("Plan limits", .limits), ("Tokens today", .tokens)],
+                          selection: $model.menuBarStyle)
+            }
+            section("Featured limit") {
+                row("Claude") { Segmented(options: Settings.LimitChoice.allCases.map { ($0.title, $0) }, selection: $model.claudeMenuLimit).frame(width: 210) }
+                row("Codex") { Segmented(options: Settings.LimitChoice.allCases.map { ($0.title, $0) }, selection: $model.codexMenuLimit).frame(width: 210) }
+                row("Numbers") { Segmented(options: [("Used", false), ("Left", true)], selection: $model.showRemaining).frame(width: 210) }
+                Text("Claude plans are paced by the 5-hour session, Codex by the week — also used by the pet.")
+                    .font(.system(size: 9.5)).foregroundStyle(VTheme.faint).fixedSize(horizontal: false, vertical: true)
+            }
+            section("Claude plan limits") {
+                Switch(title: "Read limits from Claude Code", detail: "Uses Claude Code's sign-in, read-only — no password", isOn: $model.claudeLimits)
+                Text("Token counts come from local Claude Code and Codex session logs. Costs are API-equivalent at list prices.")
+                    .font(.system(size: 9.5)).foregroundStyle(VTheme.faint).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var petTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            section("Desktop pet") {
+                Switch(title: "Show Voyager on the desktop", detail: "Drag it anywhere · click to pin · double-click for this panel", isOn: $model.petEnabled)
+                row("Limits bubble") { Segmented(options: Settings.PetLimits.allCases.map { ($0.title, $0) }, selection: $model.petLimits).frame(width: 190) }
+                row("Size") { Segmented(options: Settings.PetSize.allCases.map { ($0.title, $0) }, selection: $model.petSize).frame(width: 190) }
+                Switch(title: "Float above windows", detail: "Off: stays on the desktop, under your windows", isOn: $model.petFloats)
+                Text("The beacon turns amber at 75 % and blinks red at 90 % of the featured limits; at 100 % Voyager dozes off.")
+                    .font(.system(size: 9.5)).foregroundStyle(VTheme.faint).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var systemTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            section("System") {
+                Switch(title: "Pause on battery power", isOn: $model.pauseOnBattery)
+                Switch(title: "Launch at login", isOn: $model.launchAtLogin)
+                if let e = model.loginError { Text(e).font(.system(size: 9.5)).foregroundStyle(VTheme.alert) }
+            }
+            section("Actions") {
+                TextAction(title: "Open Explorer & timeline", symbol: "scope") { model.actions.openExplorer() }
+                TextAction(title: "Save still to Desktop", symbol: "camera") { model.actions.saveStill() }
+                TextAction(title: "Use current frame as macOS wallpaper", symbol: "photo.on.rectangle") { model.actions.setSystemWallpaper() }
+                TextAction(title: "About Voyager Bar", symbol: "info.circle") { model.actions.showAbout() }
+                TextAction(title: "Quit", symbol: "power") { model.actions.quit() }
+            }
         }
     }
 

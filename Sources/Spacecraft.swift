@@ -73,7 +73,8 @@ enum Spacecraft {
 
     // MARK: Build
 
-    static func build() -> SCNNode {
+    /// `compact` shortens the magnetometer boom and whip antennas (for the desktop pet).
+    static func build(compact: Bool = false) -> SCNNode {
         let P = palette()
         let root = SCNNode()
         root.name = "voyager"
@@ -81,8 +82,8 @@ enum Spacecraft {
         root.addChildNode(highGainAntenna(P))
         root.addChildNode(rtgBoom(P))
         root.addChildNode(scienceBoom(P))
-        root.addChildNode(magnetometerBoom(P))
-        root.addChildNode(plasmaWaveAntennas(P))
+        root.addChildNode(magnetometerBoom(P, length: compact ? 4.6 : 13))
+        root.addChildNode(plasmaWaveAntennas(P, length: compact ? 3.4 : 10))
         if ProcessInfo.processInfo.environment["VOYAGER_NOFLATTEN"] != nil { return root }
         // flattenedClone() drops geometry nested under transformed empty nodes, so
         // first bake every geometry node's full transform and hang it off one parent.
@@ -347,30 +348,31 @@ enum Spacecraft {
         return node
     }
 
-    private static func magnetometerBoom(_ P: Palette) -> SCNNode {
+    private static func magnetometerBoom(_ P: Palette, length: Float) -> SCNNode {
         let node = SCNNode()
         let az: Float = 72
         let dir = simd_normalize(V3.polar(az, radius: 1, z: -0.04))
         let root = V3.polar(az, radius: busApothem + 0.02, z: 0.02)
         // Deployment canister.
         node.addChildNode(Geo.can(root, root + dir * 0.45, radius: 0.13, material: P.blackMLI, capMaterial: P.aluminium))
-        let start = root + dir * 0.45, end = root + dir * 13.0
-        node.addChildNode(Geo.truss(from: start, to: end, width: 0.2, bays: 38, rod: 0.0065, material: P.boom, twist: 0.35))
+        let start = root + dir * 0.45, end = root + dir * length
+        node.addChildNode(Geo.truss(from: start, to: end, width: 0.2, bays: max(8, Int(length * 2.9)), rod: length < 8 ? 0.011 : 0.0065,
+                                    material: P.boom, twist: 0.35))
         // Inboard and outboard low-field magnetometers.
-        for s in [6.8, 13.0] as [Float] {
+        for s in [length * 0.52, length] {
             let p = root + dir * s
             node.addChildNode(Geo.can(p - dir * 0.06, p + dir * 0.1, radius: 0.07, material: P.gold, capMaterial: P.blackMLI))
         }
         return node
     }
 
-    private static func plasmaWaveAntennas(_ P: Palette) -> SCNNode {
+    private static func plasmaWaveAntennas(_ P: Palette, length: Float) -> SCNNode {
         let node = SCNNode()
         let base = V3.polar(-90, radius: 0.72, z: -busHeight / 2)
         node.addChildNode(Geo.box(V3(0.16, 0.1, 0.1), at: base + V3(0, 0, -0.03), material: P.gold, chamfer: 0.01))
         for az in [-135, -45] as [Float] {
             let d = simd_normalize(V3.polar(az, radius: 1, z: -0.32))
-            node.addChildNode(Geo.strut(base, base + d * 10, radius: 0.018, material: P.wire, segments: 6))
+            node.addChildNode(Geo.strut(base, base + d * length, radius: length < 8 ? 0.03 : 0.018, material: P.wire, segments: 6))
         }
         return node
     }

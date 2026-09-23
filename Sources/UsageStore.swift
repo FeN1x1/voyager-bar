@@ -62,8 +62,25 @@ struct ProviderUsage {
     var plan: String?
     var lastActivity: Date?
 
-    /// The most constrained window (highest usage), for the menu bar.
+    /// The most constrained window (highest usage).
     var tightestLimit: LimitWindow? { limits.max { $0.usedPercent < $1.usedPercent } }
+
+    var sessionLimit: LimitWindow? { limits.first { ($0.windowMinutes ?? 0) > 0 && ($0.windowMinutes ?? 0) <= 24 * 60 } }
+    /// The all-models weekly window (not a per-model one).
+    var weeklyLimit: LimitWindow? {
+        limits.first { ($0.windowMinutes ?? 0) >= 6 * 24 * 60 && !$0.title.contains("·") }
+            ?? limits.first { ($0.windowMinutes ?? 0) >= 6 * 24 * 60 }
+    }
+
+    /// The window the user chose to feature (menu bar, pet), falling back sensibly.
+    var featuredLimit: LimitWindow? {
+        let choice = provider == .claude ? Settings.claudeMenuLimit : Settings.codexMenuLimit
+        switch choice {
+        case .session: return sessionLimit ?? weeklyLimit ?? tightestLimit
+        case .weekly: return weeklyLimit ?? sessionLimit ?? tightestLimit
+        case .tightest: return tightestLimit
+        }
+    }
 }
 
 /// Scans Claude Code and Codex session logs incrementally (only appended bytes
@@ -83,6 +100,12 @@ final class UsageStore: ObservableObject {
     private var timer: Timer?
     private var limitsTimer: Timer?
     private var claudeLimits: (windows: [LimitWindow], plan: String?, status: LimitStatus) = ([], nil, .notConnected)
+    private var lastLimitsSuccess: Date?
+    private static let clock: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 
     func usage(_ p: AIProvider) -> ProviderUsage { p == .claude ? claude : codex }
 
@@ -199,11 +222,20 @@ final class UsageStore: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 switch result {
-                case let .success(r): self.claudeLimits = (r.windows, r.plan, .ok)
+                case let .success(r):
+                    self.claudeLimits = (r.windows, r.plan, .ok)
+                    self.lastLimitsSuccess = Date()
                 case let .failure(e):
+                    // Keep the last known values, marked with their age.
+                    let stale = self.claudeLimits.windows.map { w in
+                        LimitWindow(id: w.id, title: w.title,
+                                    usedPercent: (w.resetsAt.map { $0 < Date() } ?? false) ? 0 : w.usedPercent,
+                                    resetsAt: (w.resetsAt.map { $0 < Date() } ?? false) ? nil : w.resetsAt,
+                                    windowMinutes: w.windowMinutes,
+                                    source: w.source.hasPrefix("as of") ? w.source : "as of " + Self.clock.string(from: self.lastLimitsSuccess ?? Date()))
+                    }
                     let status: LimitStatus = e == .expired ? .expired : .unavailable(e.message)
-                    self.claudeLimits = (self.claudeLimits.windows, self.claudeLimits.plan, status)
-                    if e == .denied { Settings.claudeLimitsEnabled = false }
+                    self.claudeLimits = (stale, self.claudeLimits.plan, status)
                 }
                 self.applyClaudeLimits()
             }

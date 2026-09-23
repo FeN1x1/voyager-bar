@@ -38,6 +38,13 @@ desktop icons on every Space and display.
 *Left-click the menu bar icon for the panel, right-click for settings.* (Usage numbers in
 these screenshots are illustrative.)
 
+<p align="center"><img src="docs/menubar.png" width="420" alt="Menu bar item on dark and light menu bars"></p>
+
+The menu bar shows one ring gauge per provider in its own colour — **Claude orange**,
+**OpenAI white** (black on a light menu bar) — with the limit that matters: Claude's
+**5-hour session** and Codex's **weekly** window by default (switchable to weekly, 5 h or
+the tightest one, as *used* or *left*). Numbers turn red at 90 %.
+
 - **Live telemetry** — distance from Earth ticking by the kilometre, light time, range rate,
   mission day, remaining plutonium-238, and where a signal sent at midnight is right now on
   its way to Earth.
@@ -56,13 +63,39 @@ Everything is read **locally**:
   message/request, all cache tiers and fast mode priced).
 - **Codex** — Codex's session logs in `~/.codex/sessions`; Codex also writes its current
   rate-limit snapshot there, so its plan limits need no network access at all.
-- **Claude plan limits** are optional: click *Connect plan limits* once and macOS asks for
-  Keychain access to Claude Code's sign-in. Voyager Bar only **reads** it to call the same
-  usage endpoint as `/usage`; it never refreshes or writes the token, so Claude Code's login
-  is untouched.
+- **Claude plan limits** work out of the box, with no password prompt: Claude Code stores
+  its sign-in in the Keychain through the `security` tool, so Voyager Bar reads it the same
+  way (`/usr/bin/security find-generic-password`, which that Keychain item already trusts)
+  instead of asking macOS for Keychain access. The token is only **read** to call the same
+  usage endpoint as `/usage` — never refreshed or written — so Claude Code's login is
+  untouched. If the token has expired, the last known values stay visible until you use
+  Claude Code again. You can switch this off in *Settings → Menu bar*.
 
 Costs are what the tokens would cost at Anthropic/OpenAI list prices — on a subscription
 that is not what you pay.
+
+## Desktop pet
+
+<p align="center"><img src="docs/pet.png" width="360" alt="Voyager desktop pet with its limits bubble"></p>
+
+A small Voyager that slowly turns and bobs wherever you drop it. Hover (or click to pin)
+for its bubble with the featured Claude and Codex limits and today's tokens; double-click
+for mission control; right-click for options. Its beacon is green, turns amber at 75 %
+and blinks red at 90 %; at 100 % Voyager dozes off. Choose in *Settings → Pet*: bubble on
+hover / always / never, size S–L, floating above windows or staying on the desktop.
+
+## Settings
+
+Everything is in the panel (right-click the menu bar icon), in four tabs:
+
+- **Wallpaper** — live wallpaper on/off (off frees the GPU and keeps just the menu bar and
+  pet), all displays or the main one, pause, camera (tour or a fixed shot), composition,
+  motion, overlays, units, frame rate, antialiasing.
+- **Menu bar** — icon only / plan limits / tokens today, which limit per provider,
+  used or left, Claude limits on/off.
+- **Pet** — show, bubble mode, size, float above windows.
+- **System** — pause on battery, launch at login, Explorer, save a still, set the current
+  frame as the macOS wallpaper.
 
 ## The wallpaper
 
@@ -138,7 +171,8 @@ B="build/Voyager Bar.app/Contents/MacOS/VoyagerBar"
 | `VoyagerScene.swift` | scene, lighting, cinematic and encounter cameras |
 | `ExplorerWindow.swift`, `TimelineView.swift` | Explorer window and timeline |
 | `UsageStore.swift`, `UsageLimits.swift`, `UsagePricing.swift` | log scanning, plan limits, prices |
-| `MenuPanel.swift`, `StatusGlyph.swift`, `UsageHUDView.swift`, `HUDView.swift` | menu bar panel, icon, overlays |
+| `MenuPanel.swift`, `StatusGlyph.swift`, `UsageHUDView.swift`, `HUDView.swift` | menu bar panel, icon and gauges, overlays |
+| `Pet.swift` | desktop pet: sprite turntable, bubble, window |
 
 See [CREDITS.md](CREDITS.md) for data sources and licenses. Unofficial fan project, not
 affiliated with NASA, JPL, Anthropic or OpenAI.

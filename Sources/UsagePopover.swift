@@ -35,7 +35,7 @@ enum UsageFormat {
     }
 
     static func accent(_ p: AIProvider) -> Color {
-        p == .claude ? Color(red: 0.87, green: 0.52, blue: 0.38) : Color(red: 0.55, green: 0.76, blue: 0.95)
+        p == .claude ? Color(red: 0.85, green: 0.47, blue: 0.34) : Color(white: 0.92)
     }
 }
 
