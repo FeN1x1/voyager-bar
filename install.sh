@@ -31,7 +31,7 @@ tag="$(printf '%s' "$json" | grep -o '"tag_name": *"[^"]*"' | head -1 | sed -E '
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-say "Downloading Voyager Bar $tag…"
+say "Downloading Voyager Bar ${tag}…"
 curl -fL --progress-bar "$zip_url" -o "$tmp/VoyagerBar.zip"
 
 if [[ -n "$sums_url" ]]; then
